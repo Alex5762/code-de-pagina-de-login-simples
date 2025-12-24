@@ -15,7 +15,8 @@ const Button: React.FC<ButtonProps> = ({
   disabled,
   ...props 
 }) => {
-  const baseStyles = "inline-flex items-center justify-center px-4 py-2 text-sm font-medium transition-all duration-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed";
+  // Base styles: Removido 'disabled:opacity-50' daqui para gerenciar condicionalmente
+  const baseStyles = "inline-flex items-center justify-center px-4 py-2 text-sm font-medium transition-all duration-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:cursor-not-allowed";
   
   const variants = {
     primary: "bg-indigo-600 hover:bg-indigo-700 text-white focus:ring-indigo-500 shadow-lg shadow-indigo-500/30 border border-transparent",
@@ -26,9 +27,15 @@ const Button: React.FC<ButtonProps> = ({
 
   const widthClass = fullWidth ? "w-full" : "";
 
+  // Se estiver carregando, aplica pulso e mantem opacidade alta (o pulso já reduz visualmente).
+  // Se estiver apenas desabilitado (sem carregar), aplica a opacidade de 50%.
+  const stateStyles = isLoading 
+    ? "animate-pulse cursor-wait opacity-90" 
+    : "disabled:opacity-50";
+
   return (
     <button 
-      className={`${baseStyles} ${variants[variant]} ${widthClass} ${className}`}
+      className={`${baseStyles} ${variants[variant]} ${widthClass} ${stateStyles} ${className}`}
       disabled={disabled || isLoading}
       {...props}
     >

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, AuthStatus, ViewMode } from './types';
 import { mockLoginWithEmail, mockLoginWithGoogle, mockRegisterWithEmail, mockResetPassword } from './services/authService';
+import { validateEmail, validatePasswordStrength, sanitizeInput, isSafeInput } from './utils/security';
 import Input from './components/Input';
 import Button from './components/Button';
 import Dashboard from './components/Dashboard';
@@ -29,6 +30,8 @@ const GoogleIcon = () => (
 
 // TODO: Replace with your actual key matching the one in index.html
 const RECAPTCHA_SITE_KEY = 'YOUR_RECAPTCHA_SITE_KEY';
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_TIME = 30000; // 30 segundos
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -37,16 +40,34 @@ const App: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Security State
+  const [failedAttempts, setFailedAttempts] = useState(0);
+
   // Form State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  // Rate Limiting Logic
+  useEffect(() => {
+    if (failedAttempts >= MAX_ATTEMPTS) {
+      setAuthStatus(AuthStatus.LOCKED);
+      setErrorMsg(`Muitas tentativas falhas. Aguarde ${LOCKOUT_TIME / 1000} segundos.`);
+      
+      const timer = setTimeout(() => {
+        setFailedAttempts(0);
+        setAuthStatus(AuthStatus.IDLE);
+        setErrorMsg(null);
+      }, LOCKOUT_TIME);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [failedAttempts]);
+
   const executeRecaptcha = async (action: string): Promise<string> => {
     if (typeof (window as any).grecaptcha === 'undefined') {
-      console.warn('reCAPTCHA not loaded. Check your internet connection or API Key in index.html.');
+      console.warn('reCAPTCHA not loaded.');
       return '';
     }
-    
     try {
       return await (window as any).grecaptcha.execute(RECAPTCHA_SITE_KEY, { action });
     } catch (error) {
@@ -55,21 +76,55 @@ const App: React.FC = () => {
     }
   };
 
+  const validateInputs = (): boolean => {
+    // 1. Sanitization check
+    if (!isSafeInput(email) || !isSafeInput(password)) {
+      setErrorMsg("Entrada inválida detectada.");
+      return false;
+    }
+
+    // 2. Email Format
+    if (!validateEmail(email)) {
+      setErrorMsg("Formato de e-mail inválido.");
+      return false;
+    }
+
+    // 3. Password Policy (Only enforce strictly on Registration)
+    if (viewMode === ViewMode.REGISTER) {
+      const strength = validatePasswordStrength(password);
+      if (!strength.isValid) {
+        setErrorMsg(strength.message || "Senha fraca.");
+        return false;
+      }
+    }
+
+    // 4. Basic length check for login
+    if (viewMode === ViewMode.LOGIN && password.length < 1) {
+      setErrorMsg("Por favor, insira sua senha.");
+      return false;
+    }
+
+    return true;
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (authStatus === AuthStatus.LOCKED) return;
+
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    // Differentiate logic based on view mode
+    // Sanitiza antes de usar
+    const cleanEmail = sanitizeInput(email);
+    // Nota: Normalmente não sanitizamos senhas (pode quebrar caracteres especiais válidos), 
+    // mas verificamos se há scripts maliciosos.
+
     if (viewMode === ViewMode.FORGOT_PASSWORD) {
-      await handleResetPassword();
+      await handleResetPassword(cleanEmail);
       return;
     }
 
-    if (!email || !password) {
-      setErrorMsg("Por favor, preencha todos os campos");
-      return;
-    }
+    if (!validateInputs()) return;
 
     setAuthStatus(AuthStatus.LOADING);
 
@@ -78,34 +133,44 @@ const App: React.FC = () => {
       
       let loggedUser: User;
       if (viewMode === ViewMode.LOGIN) {
-        loggedUser = await mockLoginWithEmail(email, password, token);
+        loggedUser = await mockLoginWithEmail(cleanEmail, password, token);
       } else {
-        loggedUser = await mockRegisterWithEmail(email, password, token);
+        loggedUser = await mockRegisterWithEmail(cleanEmail, password, token);
       }
+      
+      // Sucesso: Resetar tentativas de falha
+      setFailedAttempts(0);
       setUser(loggedUser);
       setAuthStatus(AuthStatus.SUCCESS);
     } catch (err) {
       setAuthStatus(AuthStatus.ERROR);
-      setErrorMsg(err instanceof Error ? err.message : "Ocorreu um erro inesperado");
+      setFailedAttempts(prev => prev + 1);
+      
+      // BEST PRACTICE: Mensagem de erro genérica no Login para evitar enumeração de usuários
+      if (viewMode === ViewMode.LOGIN) {
+         setErrorMsg("Email ou senha incorretos.");
+      } else {
+         setErrorMsg(err instanceof Error ? err.message : "Ocorreu um erro inesperado");
+      }
     }
   };
 
-  const handleResetPassword = async () => {
-    if (!email) {
-      setErrorMsg("Por favor, insira seu endereço de email");
+  const handleResetPassword = async (cleanEmail: string) => {
+    if (!validateEmail(cleanEmail)) {
+      setErrorMsg("Por favor, insira um endereço de email válido");
       return;
     }
 
     setAuthStatus(AuthStatus.LOADING);
     try {
       const token = await executeRecaptcha('reset_password');
-      await mockResetPassword(email, token);
+      await mockResetPassword(cleanEmail, token);
       setAuthStatus(AuthStatus.SUCCESS);
-      setSuccessMsg(`Enviamos um link de redefinição para ${email}. Verifique sua caixa de entrada!`);
-      // Optional: Clear email or redirect after a delay
+      setSuccessMsg(`Se o email existir, enviamos um link para ${cleanEmail}.`);
     } catch (err) {
       setAuthStatus(AuthStatus.ERROR);
-      setErrorMsg(err instanceof Error ? err.message : "Falha ao enviar e-mail de redefinição");
+      // Mensagem genérica mesmo em erro
+      setErrorMsg("Não foi possível processar a solicitação.");
     }
   };
 
@@ -127,7 +192,6 @@ const App: React.FC = () => {
     setErrorMsg(null);
     setSuccessMsg(null);
     setAuthStatus(AuthStatus.IDLE);
-    // Keep email populated if switching modes, but maybe clear password
     setPassword('');
   };
 
@@ -135,7 +199,6 @@ const App: React.FC = () => {
     return <Dashboard user={user} onLogout={() => setUser(null)} />;
   }
 
-  // Dynamic Header Text
   let headerTitle = 'Bem-vindo de volta';
   let headerSubtitle = 'Insira suas credenciais para acessar o painel';
   
@@ -149,7 +212,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-gray-900 text-white relative overflow-hidden">
-        {/* Background Decorative Elements */}
         <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
             <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-indigo-600/20 rounded-full blur-[120px]" />
             <div className="absolute top-[30%] -right-[10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[100px]" />
@@ -168,10 +230,12 @@ const App: React.FC = () => {
             </p>
           </div>
 
-          <form onSubmit={handleAuth} className="space-y-5">
+          <form onSubmit={handleAuth} className="space-y-5" autoComplete="off">
             <Input 
               label="Endereço de Email" 
               type="email" 
+              name="email"
+              autoComplete="email"
               placeholder="voce@exemplo.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -187,6 +251,8 @@ const App: React.FC = () => {
                 <Input 
                   label="Senha" 
                   type="password" 
+                  name="password"
+                  autoComplete={viewMode === ViewMode.REGISTER ? "new-password" : "current-password"}
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -196,6 +262,12 @@ const App: React.FC = () => {
                     </svg>
                   }
                 />
+                
+                {viewMode === ViewMode.REGISTER && (
+                   <p className="text-xs text-gray-500 mt-1">
+                     A senha deve ter: 8+ caracteres, 1 maiúscula, 1 número, 1 caractere especial.
+                   </p>
+                )}
                 
                 {viewMode === ViewMode.LOGIN && (
                   <div className="flex justify-end">
@@ -212,7 +284,10 @@ const App: React.FC = () => {
             )}
 
             {errorMsg && (
-              <div className="p-3 text-sm text-red-200 bg-red-900/30 border border-red-800 rounded-lg animate-fade-in">
+              <div className="p-3 text-sm text-red-200 bg-red-900/30 border border-red-800 rounded-lg animate-fade-in flex items-center">
+                <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
                 {errorMsg}
               </div>
             )}
@@ -228,8 +303,9 @@ const App: React.FC = () => {
               fullWidth 
               variant="primary" 
               isLoading={authStatus === AuthStatus.LOADING}
+              disabled={authStatus === AuthStatus.LOCKED}
             >
-              {viewMode === ViewMode.LOGIN ? 'Entrar' : (viewMode === ViewMode.REGISTER ? 'Cadastrar' : 'Enviar Link de Redefinição')}
+              {authStatus === AuthStatus.LOCKED ? `Aguarde...` : (viewMode === ViewMode.LOGIN ? 'Entrar' : (viewMode === ViewMode.REGISTER ? 'Cadastrar' : 'Enviar Link'))}
             </Button>
           </form>
 
@@ -243,7 +319,7 @@ const App: React.FC = () => {
 
               <button
                 onClick={handleGoogleLogin}
-                disabled={authStatus === AuthStatus.LOADING}
+                disabled={authStatus === AuthStatus.LOADING || authStatus === AuthStatus.LOCKED}
                 className="w-full flex items-center justify-center px-4 py-2.5 border border-gray-600 rounded-lg text-sm font-medium text-white bg-gray-800 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-gray-500 transition-colors disabled:opacity-50"
               >
                 <GoogleIcon />
@@ -276,8 +352,8 @@ const App: React.FC = () => {
           
           <div className="mt-6 text-center text-xs text-gray-500">
             Este site é protegido pelo reCAPTCHA e a 
-            <a href="https://policies.google.com/privacy" className="text-gray-400 hover:underline"> Política de Privacidade</a> e os 
-            <a href="https://policies.google.com/terms" className="text-gray-400 hover:underline"> Termos de Serviço</a> do Google se aplicam.
+            <a href="https://policies.google.com/privacy" className="text-gray-400 hover:underline" rel="noopener noreferrer" target="_blank"> Política de Privacidade</a> e os 
+            <a href="https://policies.google.com/terms" className="text-gray-400 hover:underline" rel="noopener noreferrer" target="_blank"> Termos de Serviço</a> do Google se aplicam.
           </div>
         </div>
       </div>

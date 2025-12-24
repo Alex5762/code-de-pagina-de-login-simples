@@ -1,14 +1,27 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Ensure the API key is available. In a real app, this is handled via environment variables.
-const apiKey = process.env.API_KEY || 'MISSING_API_KEY';
+// Safe access to process.env to prevent ReferenceError in pure browser environments
+const getApiKey = () => {
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      return process.env.API_KEY;
+    }
+  } catch (e) {
+    // Ignore error if process is not defined
+  }
+  return 'MISSING_API_KEY';
+};
+
+const apiKey = getApiKey();
 
 export const generateWelcomeMessage = async (userName: string): Promise<string> => {
-  try {
-    if (apiKey === 'MISSING_API_KEY') {
-        return "Bem-vindo! (Adicione sua API Key para ver recursos de IA)";
-    }
+  // Return immediate fallback if key is missing to avoid API call overhead
+  if (apiKey === 'MISSING_API_KEY') {
+    console.warn("API Key is missing. Using fallback message.");
+    return "Bem-vindo! (Adicione sua API Key)";
+  }
 
+  try {
     const ai = new GoogleGenAI({ apiKey });
     
     // Using flash model for quick response
@@ -20,6 +33,7 @@ export const generateWelcomeMessage = async (userName: string): Promise<string> 
     return response.text || "Bem-vindo ao seu painel!";
   } catch (error) {
     console.error("Gemini API Error:", error);
+    // Fallback message in case of quota limit or network error
     return `Bem-vindo de volta, ${userName}!`;
   }
 };

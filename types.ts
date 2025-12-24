@@ -10,6 +10,7 @@ export enum AuthStatus {
   LOADING = 'LOADING',
   SUCCESS = 'SUCCESS',
   ERROR = 'ERROR',
+  LOCKED = 'LOCKED', // Novo estado para proteção contra força bruta
 }
 
 export enum ViewMode {

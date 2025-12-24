@@ -3,6 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- 
+      SECURITY BEST PRACTICE: Content Security Policy (CSP)
+    -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://esm.sh https://www.google.com https://www.gstatic.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src https://fonts.gstatic.com;
+      img-src 'self' data: https://picsum.photos https://fastly.picsum.photos https://lh3.googleusercontent.com;
+      connect-src 'self' https://esm.sh https://generativelanguage.googleapis.com https://www.google.com https://www.gstatic.com;
+      frame-src https://www.google.com;
+    ">
+
     <title>FireLogin & Gemini</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -34,7 +48,6 @@
         background-color: #0f172a;
         color: white;
       }
-      /* Ensure reCAPTCHA badge doesn't overlap with critical UI on mobile */
       .grecaptcha-badge { 
         visibility: visible;
         z-index: 100;
@@ -43,16 +56,17 @@
   <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "@google/genai": "https://esm.sh/@google/genai",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0"
+    "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
 </script>
 <!-- 
   TODO: Replace YOUR_RECAPTCHA_SITE_KEY with your actual V3 site key.
-  Get it here: https://www.google.com/recaptcha/admin 
 -->
 <script src="https://www.google.com/recaptcha/api.js?render=YOUR_RECAPTCHA_SITE_KEY"></script>
 </head>
