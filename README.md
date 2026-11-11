@@ -28,14 +28,31 @@ npm install
 npm run dev
 ```
 
+O Vite informa no terminal o endereço local do servidor.
+
+### Configurar a integração Gemini (opcional)
+
+Para habilitar a mensagem de boas-vindas gerada pelo Gemini:
+
+1. Crie um arquivo chamado `.env.local` na raiz do projeto.
+2. Adicione sua chave:
+
+   ```env
+   GEMINI_API_KEY=sua_chave_aqui
+   ```
+
+3. Reinicie o servidor de desenvolvimento depois de salvar o arquivo.
+
+O Vite lê essa variável pela configuração do projeto. Sem ela, a aplicação utiliza a mensagem alternativa.
+
+> **Atenção:** neste protótipo, a chave é incorporada ao código entregue ao navegador pela configuração do Vite. Portanto, ela pode ser extraída por quem acessar a aplicação. Use somente uma chave temporária/restrita para testes; não utilize esse padrão em produção. Em um sistema real, a chamada à API deve passar por um backend que mantenha a chave fora do navegador.
+
 Para gerar e pré-visualizar a versão de produção:
 
 ```bash
 npm run build
 npm run preview
 ```
-
-O Vite informa no terminal o endereço local do servidor.
 
 ## Estrutura principal
 
